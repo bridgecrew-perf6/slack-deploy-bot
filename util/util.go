@@ -27,14 +27,12 @@ const (
 func ecrSession() *ecr.ECR {
 	sess := session.Must(session.NewSession())
 	return ecr.New(sess)
-
 }
 
 func getEcrImages(svc *ecr.ECR, app string) (*ecr.ListImagesOutput, error) {
 	input := ecr.ListImagesInput{RepositoryName: &app}
 	images, err := svc.ListImages(&input)
 	return images, err
-
 }
 
 // Checks to ensure the image exists in ECR
@@ -159,7 +157,7 @@ func PushCommit(ctx context.Context, ghclient *github.Client, app, imgTag string
 func CheckArgsValid(ctx context.Context, ghclient *github.Client, args []string) (bool, string) {
 	// Show usage in the case no input is provided
 	if len(args) == 1 {
-		return false, "Usage: @me <app> <pr_number>"
+		return false, "Usage: @me <app> <pr_number/main>"
 	}
 
 	// Check provided number of args are correct
@@ -167,7 +165,7 @@ func CheckArgsValid(ctx context.Context, ghclient *github.Client, args []string)
 		return false, "Wrong number of args provided"
 	}
 
-	// Check ref arg is either PR or main branch
+	// Check ref arg is either PR num or main branch
 	_, err := strconv.Atoi((args[2]))
 	if err != nil && args[2] != "main" {
 		return false, "You can only deploy a PR or main branch"
@@ -250,6 +248,16 @@ func SyncApplication(client *http.Client, app string) error {
 	return nil
 }
 
+func GetAppFromPayload(body []byte) string {
+	application := make(map[string]interface{})
+	json.Unmarshal(body, &application)
+	commit := application["head_commit"]
+	modified := commit.(map[string]interface{})["modified"]
+	str := modified.([]interface{})[0].(string)
+	app := strings.TrimSuffix(str, "/values.yaml")
+	return app
+}
+
 // The Github hook should only be forwarded to Argo if initiated by the slackbot
 func ConfirmCallerSlackbot(body []byte) bool {
 	var githook map[string]interface{}
@@ -274,7 +282,7 @@ func GetArgoDeploymentStatus(client *http.Client, app string) map[string]string 
 	body, _ := io.ReadAll(resp.Body)
 	// TODO: Figure out most idiomatic way to parse this json
 	application := make(map[string]interface{})
-	json.Unmarshal([]byte(body), &application)
+	json.Unmarshal(body, &application)
 	status := application["status"]
 	resources := status.(map[string]interface{})["resources"]
 	deploymentStatus := make(map[string]string)

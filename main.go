@@ -13,13 +13,12 @@ import (
 	"strings"
 	"time"
 
-	//	"github.com/google/go-github/v40/github"
 	"github.com/joho/godotenv"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 )
 
-func run(event *slackevents.AppMentionEvent, c chan string) {
+func run(event *slackevents.AppMentionEvent) {
 	log.Printf("args received %s", event.Text)
 	slackToken := os.Getenv("SLACK_AUTH_TOKEN")
 	api := slack.New(slackToken)
@@ -32,28 +31,23 @@ func run(event *slackevents.AppMentionEvent, c chan string) {
 		log.Printf("%s", errMsg)
 		return
 	}
+
 	app := args[1]
-	//fmt.Println(c)
-	//c <- app
-	//x := <-c
-	//fmt.Println(x)
-	//close(c)
-
-	prNum, _ := strconv.Atoi((args[2]))
-
+	ref := args[2]
+	prNum, _ := strconv.Atoi(ref)
 	// TODO: Implement additional contexts for subsequent requests
 	// TODO: Not sure it's best to call PullRequests.Get even when prNum is intended to be "main"
 	pr, resp, err := ghclient.PullRequests.Get(ctx, util.Owner, app, prNum)
 	if resp.StatusCode == 200 {
-		fetchMsg := fmt.Sprintf("Fetching %v.", pr.GetHTMLURL())
+		fetchMsg := fmt.Sprintf("Fetching %v", pr.GetHTMLURL())
 		api.PostMessage(event.Channel, slack.MsgOptionText(fetchMsg, false))
-	} else if pr != nil {
+	} else if pr == nil && ref != "main" {
 		api.PostMessage(event.Channel, slack.MsgOptionText(fmt.Sprintf("Error: %s.", err), false))
 		log.Printf("Error: %s", err)
+		return
 	}
 
 	tagExists, imgTag, sha := util.ConfirmImageExists(ctx, ghclient, pr, app)
-	fmt.Println(tagExists, imgTag, sha)
 	if tagExists != true {
 		//attachments := slack.Attachment{Color: "blue"}
 		//params := slack.MsgOption(slack.MsgOptionAttachments(attachments))
@@ -130,7 +124,6 @@ func main() {
 	// TODO: Remove this when all testing is complete
 	godotenv.Load(".env")
 
-	var c chan string = make(chan string, 1)
 	// Listen for Github webhook
 	http.HandleFunc("/gitshot", func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -146,12 +139,8 @@ func main() {
 			if err != nil {
 				return
 			}
-
-			//			app := <-c
-			//fmt.Println(app)
-			// TODO: Send app to channel in /events listener and read from that here
-			//			util.SyncApplication(client, app)
-
+			app := util.GetAppFromPayload(body)
+			util.SyncApplication(client, app)
 		} else {
 			return
 		}
@@ -206,7 +195,7 @@ func main() {
 
 			switch e := innerEvent.Data.(type) {
 			case *slackevents.AppMentionEvent:
-				go run(e, c)
+				go run(e)
 				return
 			}
 		}
