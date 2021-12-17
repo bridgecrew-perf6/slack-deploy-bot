@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"deploy-bot/argo"
+	"deploy-bot/aws"
+	"deploy-bot/github"
 	"deploy-bot/util"
 	"encoding/json"
 	"fmt"
@@ -22,10 +25,10 @@ func run(event *slackevents.AppMentionEvent) {
 	log.Printf("args received %s", event.Text)
 	slackToken := os.Getenv("SLACK_AUTH_TOKEN")
 	api := slack.New(slackToken)
-	ctx, ghclient := util.GithubClient()
+	ctx, ghclient := github.Client()
 	args := strings.Split(event.Text, " ")
 
-	valid, errMsg := util.CheckArgsValid(ctx, ghclient, args)
+	valid, errMsg := util.CheckArgsValid(ctx, args)
 	if valid != true {
 		api.PostMessage(event.Channel, slack.MsgOptionText(fmt.Sprintf("%s", errMsg), false))
 		log.Printf("%s", errMsg)
@@ -47,7 +50,7 @@ func run(event *slackevents.AppMentionEvent) {
 		return
 	}
 
-	tagExists, imgTag, sha := util.ConfirmImageExists(ctx, ghclient, pr, app)
+	tagExists, imgTag, sha := aws.ConfirmImageExists(ctx, ghclient, pr, app)
 	if tagExists != true {
 		//attachments := slack.Attachment{Color: "blue"}
 		//params := slack.MsgOption(slack.MsgOptionAttachments(attachments))
@@ -59,7 +62,7 @@ func run(event *slackevents.AppMentionEvent) {
 		return
 	}
 
-	completed := util.ConfirmChecksCompleted(ctx, ghclient, app, sha, nil)
+	completed := github.ConfirmChecksCompleted(ctx, ghclient, app, sha, nil)
 	if completed != true {
 		actMsg := fmt.Sprintf("Github Actions are still underway for %s", imgTag)
 		api.PostMessage(event.Channel, slack.MsgOptionText(actMsg, false))
@@ -67,7 +70,7 @@ func run(event *slackevents.AppMentionEvent) {
 		return
 	}
 
-	rdClser, repoContent, dlMsg, err := util.DownloadValues(ctx, ghclient, app)
+	rdClser, repoContent, dlMsg, err := github.DownloadValues(ctx, ghclient, app)
 	if err != nil {
 		log.Fatalf("Error %s", err.Error())
 		return
@@ -75,13 +78,13 @@ func run(event *slackevents.AppMentionEvent) {
 		api.PostMessage(event.Channel, slack.MsgOptionText(dlMsg, false))
 	}
 
-	newVFC, _, msg := util.UpdateValues(rdClser, imgTag)
+	newVFC, _, msg := github.UpdateValues(rdClser, imgTag)
 	if msg != "" {
 		api.PostMessage(event.Channel, slack.MsgOptionText(msg, false))
 		return
 	}
 
-	deployMsg, err := util.PushCommit(ctx, ghclient, app, imgTag, newVFC, repoContent)
+	deployMsg, err := github.PushCommit(ctx, ghclient, app, imgTag, newVFC, repoContent)
 	if err != nil {
 		log.Fatalf("Error %s", err.Error())
 		return
@@ -94,8 +97,8 @@ func run(event *slackevents.AppMentionEvent) {
 	time.Sleep(time.Second * 2) // Argo typically starts processing webhooks in <1s upon receipt
 
 	for {
-		client := util.ArgoClient()
-		dStatus := util.GetArgoDeploymentStatus(client, app)
+		client := argo.Client()
+		dStatus := argo.GetArgoDeploymentStatus(client, app)
 		// TODO: Figure out how to format status output "map[time-app:Synced time-sidekiq:Synced] nicely"
 		api.PostMessage(event.Channel, slack.MsgOptionText(fmt.Sprintf("%s", dStatus), false))
 		dSynced := 0
@@ -134,13 +137,13 @@ func main() {
 		callerSlackbot := util.ConfirmCallerSlackbot(body)
 		//TODO: Have Adam create unique GH user with PAT that can be used to identify as Slackbot user
 		if callerSlackbot == true {
-			client := util.ArgoClient()
-			err := util.ForwardGitshot(client, payload)
+			client := argo.Client()
+			err := argo.ForwardGitshot(client, payload)
 			if err != nil {
 				return
 			}
 			app := util.GetAppFromPayload(body)
-			util.SyncApplication(client, app)
+			argo.SyncApplication(client, app)
 		} else {
 			return
 		}
