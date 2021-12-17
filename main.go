@@ -38,28 +38,18 @@ func run(event *slackevents.AppMentionEvent, c chan string) {
 	//x := <-c
 	//fmt.Println(x)
 	//close(c)
-	// This will be a PR or branch
-	//ref := args[2]
-	//if _, err := strconv.Atoi(ref); err == nil {
-	//	fmt.Printf("%q looks like a number.\n", ref)
-	//}
-	//	os.Exit(1)
-	//	opts := *&github.CommitsListOptions{SHA: "main"}
-	//	ghclient.Repositories.ListCommits(ctx context.Context, owner string, repo string, opts )
 
 	prNum, _ := strconv.Atoi((args[2]))
-	//fmt.Println(prNum)
 
 	// TODO: Implement additional contexts for subsequent requests
+	// TODO: Not sure it's best to call PullRequests.Get even when prNum is intended to be "main"
 	pr, resp, err := ghclient.PullRequests.Get(ctx, util.Owner, app, prNum)
-	//fmt.Println(pr)
 	if resp.StatusCode == 200 {
 		fetchMsg := fmt.Sprintf("Fetching %v.", pr.GetHTMLURL())
 		api.PostMessage(event.Channel, slack.MsgOptionText(fetchMsg, false))
 	} else if pr != nil {
 		api.PostMessage(event.Channel, slack.MsgOptionText(fmt.Sprintf("Error: %s.", err), false))
 		log.Printf("Error: %s", err)
-		//	return
 	}
 
 	tagExists, imgTag, sha := util.ConfirmImageExists(ctx, ghclient, pr, app)
@@ -104,7 +94,6 @@ func run(event *slackevents.AppMentionEvent, c chan string) {
 	} else {
 		api.PostMessage(event.Channel, slack.MsgOptionText(deployMsg, false))
 	}
-
 	// TODO: The status may return as Synced before the Argo server has received or processed
 	// the webhook, so figure out best way to confirm that webhook has been received and status
 	// is Progressing before breaking out of loop
@@ -115,7 +104,6 @@ func run(event *slackevents.AppMentionEvent, c chan string) {
 		dStatus := util.GetArgoDeploymentStatus(client, app)
 		// TODO: Figure out how to format status output "map[time-app:Synced time-sidekiq:Synced] nicely"
 		api.PostMessage(event.Channel, slack.MsgOptionText(fmt.Sprintf("%s", dStatus), false))
-		//	time.Sleep(time.Second * 5)
 		dSynced := 0
 		for _, status := range dStatus {
 			if status == "Synced" {
@@ -131,7 +119,6 @@ func run(event *slackevents.AppMentionEvent, c chan string) {
 			break
 		}
 	}
-
 	//The typical flow of a multithreaded program in Go involves setting up communication channels,
 	// and then passing these channels to all goroutines which need to communicate.
 	// Worker goroutines send processed data to the channel, and goroutines which need

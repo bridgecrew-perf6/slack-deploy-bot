@@ -43,6 +43,8 @@ func ConfirmImageExists(ctx context.Context, ghclient *github.Client, pr *github
 	var imgTag *string
 	var sha string
 
+	// pr will be nil if anything other than a positive int was presented as 2nd slackbot arg
+	// so then we get the HEAD commit on main
 	if pr == nil {
 		opts := &github.CommitsListOptions{SHA: "main"}
 		repoCommits, _, _ := ghclient.Repositories.ListCommits(ctx, Owner, app, opts)
@@ -270,7 +272,6 @@ func GetArgoDeploymentStatus(client *http.Client, app string) map[string]string 
 	}
 
 	body, _ := io.ReadAll(resp.Body)
-	//	fmt.Println(string(body))
 	// TODO: Figure out most idiomatic way to parse this json
 	application := make(map[string]interface{})
 	json.Unmarshal([]byte(body), &application)
