@@ -1,0 +1,34 @@
+_metadata:
+  major_version: 1
+  minor_version: 1
+display_information:
+  name: stager
+features:
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: stager
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - commands
+      - chat:write.customize
+      - chat:write
+      - incoming-webhook
+      - channels:history
+      - chat:write.public
+      - app_mentions:read
+settings:
+  event_subscriptions:
+    request_url: https://deploy-staging.capco.com/events
+    bot_events:
+      - app_mention
+  interactivity:
+    is_enabled: true
+    request_url: https://deploy-staging.capco.com/events
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
