@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -23,27 +24,47 @@ const (
 	Owner = "capco-ea"
 )
 
-// Checks to ensure the image exists in ECR
-func ConfirmImageExists(pr *github.PullRequest, app string) (bool, string, string) {
-	ref := pr.Head.GetRef()
-	sha := pr.Head.GetSHA()
-	imgTag := BuildDockerImageString(ref, sha)
-	//TODO: Establish session outside of function call so it can be reused
+func ecrSession() *ecr.ECR {
 	sess := session.Must(session.NewSession())
-	svc := ecr.New(sess)
+	return ecr.New(sess)
+
+}
+
+func getEcrImages(svc *ecr.ECR, app string) (*ecr.ListImagesOutput, error) {
 	input := ecr.ListImagesInput{RepositoryName: &app}
 	images, err := svc.ListImages(&input)
+	return images, err
 
+}
+
+// Checks to ensure the image exists in ECR
+func ConfirmImageExists(ctx context.Context, ghclient *github.Client, pr *github.PullRequest, app string) (bool, string, string) {
+	svc := ecrSession()
+	var imgTag *string
+	var sha string
+
+	if pr == nil {
+		opts := &github.CommitsListOptions{SHA: "main"}
+		repoCommits, _, _ := ghclient.Repositories.ListCommits(ctx, Owner, app, opts)
+		imgTag = buildDockerImageString("main", *repoCommits[0].SHA)
+		sha = *repoCommits[0].SHA
+	} else {
+		ref := pr.Head.GetRef()
+		sha = pr.Head.GetSHA()
+		imgTag = buildDockerImageString(ref, sha)
+	}
+
+	images, err := getEcrImages(svc, app)
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}
 
 	for _, img := range images.ImageIds {
-		if *img.ImageTag == imgTag {
-			return true, imgTag, sha
+		if *img.ImageTag == *imgTag {
+			return true, *imgTag, sha
 		}
 	}
-	return false, imgTag, sha
+	return false, *imgTag, sha
 }
 
 // Explicitly declare supported apps instead of make additional network call to Github
@@ -52,9 +73,9 @@ func getApps() []string {
 	return apps
 }
 
-func BuildDockerImageString(ref, sha string) string {
+func buildDockerImageString(ref, sha string) *string {
 	tag := ref + "-" + sha[:7]
-	return tag
+	return &tag
 }
 
 func GithubClient() (context.Context, *github.Client) {
@@ -142,6 +163,12 @@ func CheckArgsValid(ctx context.Context, ghclient *github.Client, args []string)
 	// Check provided number of args are correct
 	if len(args) != 3 {
 		return false, "Wrong number of args provided"
+	}
+
+	// Check ref arg is either PR or main branch
+	_, err := strconv.Atoi((args[2]))
+	if err != nil && args[2] != "main" {
+		return false, "You can only deploy a PR or main branch"
 	}
 
 	// Check provided app is included in supported apps array

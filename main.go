@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	//	"github.com/google/go-github/v40/github"
 	"github.com/joho/godotenv"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -31,29 +32,39 @@ func run(event *slackevents.AppMentionEvent, c chan string) {
 		log.Printf("%s", errMsg)
 		return
 	}
-
 	app := args[1]
-	fmt.Println(c)
-	c <- app
-	x := <-c
-	fmt.Println(x)
-	close(c)
+	//fmt.Println(c)
+	//c <- app
+	//x := <-c
+	//fmt.Println(x)
+	//close(c)
+	// This will be a PR or branch
+	//ref := args[2]
+	//if _, err := strconv.Atoi(ref); err == nil {
+	//	fmt.Printf("%q looks like a number.\n", ref)
+	//}
+	//	os.Exit(1)
+	//	opts := *&github.CommitsListOptions{SHA: "main"}
+	//	ghclient.Repositories.ListCommits(ctx context.Context, owner string, repo string, opts )
+
 	prNum, _ := strconv.Atoi((args[2]))
+	//fmt.Println(prNum)
 
 	// TODO: Implement additional contexts for subsequent requests
 	pr, resp, err := ghclient.PullRequests.Get(ctx, util.Owner, app, prNum)
+	//fmt.Println(pr)
 	if resp.StatusCode == 200 {
 		fetchMsg := fmt.Sprintf("Fetching %v.", pr.GetHTMLURL())
 		api.PostMessage(event.Channel, slack.MsgOptionText(fetchMsg, false))
-	} else { // If the PR does not exist
+	} else if pr != nil {
 		api.PostMessage(event.Channel, slack.MsgOptionText(fmt.Sprintf("Error: %s.", err), false))
 		log.Printf("Error: %s", err)
-		return
+		//	return
 	}
 
-	tagExists, imgTag, sha := util.ConfirmImageExists(pr, app)
+	tagExists, imgTag, sha := util.ConfirmImageExists(ctx, ghclient, pr, app)
+	fmt.Println(tagExists, imgTag, sha)
 	if tagExists != true {
-
 		//attachments := slack.Attachment{Color: "blue"}
 		//params := slack.MsgOption(slack.MsgOptionAttachments(attachments))
 		//fmt.Println(params)
@@ -149,10 +160,10 @@ func main() {
 				return
 			}
 
-			app := <-c
+			//			app := <-c
 			//fmt.Println(app)
 			// TODO: Send app to channel in /events listener and read from that here
-			util.SyncApplication(client, app)
+			//			util.SyncApplication(client, app)
 
 		} else {
 			return
