@@ -1,12 +1,16 @@
 package slack
 
 import (
-	"fmt"
 	"github.com/slack-go/slack"
-	"log"
+	//"log"
 	"os"
-	//	"github.com/slack-go/slack/slackevents"
 )
+
+type ConnInfo struct {
+	Client    *slack.Client
+	Channel   string
+	Timestamp string
+}
 
 func Client() *slack.Client {
 	slackToken := os.Getenv("SLACK_AUTH_TOKEN")
@@ -14,11 +18,26 @@ func Client() *slack.Client {
 	return api
 }
 
-func SendMessage(api *slack.Client, channel, msg string) {
-	api.PostMessage(channel, slack.MsgOptionText(fmt.Sprintf("%s", msg), false))
-	//log.Printf("Error: %s", msg)
-	//attachments := slack.Attachment{Color: "blue"}
-	//params := slack.MsgOption(slack.MsgOptionAttachments(attachments))
-	//fmt.Println(params)
-	log.Printf("%s", msg)
+func SendMessage(conn ConnInfo, msg string) {
+	channel := conn.Channel
+	api := conn.Client
+	ts := conn.Timestamp
+	attachment := buildSlackAttachment(msg)
+	api.PostMessage(channel, slack.MsgOptionAttachments(attachment), slack.MsgOptionTS(ts))
+}
+
+func buildSlackAttachment(msg string) slack.Attachment {
+
+	attachment := slack.Attachment{
+		//		Pretext: "some pretext",
+		Text: msg,
+		Fields: []slack.AttachmentField{
+			slack.AttachmentField{
+				Title: "",
+				Value: "",
+				Short: false,
+			},
+		},
+	}
+	return attachment
 }

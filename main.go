@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -24,85 +23,89 @@ import (
 
 func run(event *slackevents.AppMentionEvent) {
 	log.Printf("Arguments received %s", event.Text)
-	slackChannel := event.Channel
-	slackClient := slackbot.Client()
+	connInfo := slackbot.ConnInfo{
+		Client:    slackbot.Client(),
+		Channel:   event.Channel,
+		Timestamp: event.TimeStamp,
+	}
 	// TODO: Implement additional contexts for subsequent requests
 	ctx, githubClient := github.Client()
-
-	args := strings.Split(event.Text, " ")
-	valid, errMsg := util.CheckArgsValid(ctx, args)
+	valid, msg, app, ref := util.CheckArgsValid(ctx, event.Text)
 	if valid != true {
-		slackbot.SendMessage(slackClient, slackChannel, errMsg)
-		log.Printf("%s", errMsg)
+		slackbot.SendMessage(connInfo, msg)
+		log.Printf("%s", msg)
 		return
 	}
-
-	app := args[1]
-	ref := args[2]
+	//app, ref := util.ParseEventString(event.Text)
 	prNum, _ := strconv.Atoi(ref)
 	pr, resp, err := github.GetPullRequest(ctx, githubClient, app, prNum)
 
+	// A valid PR was provided
 	if resp.StatusCode == 200 {
-		msg := fmt.Sprintf("Fetching %v", pr.GetHTMLURL())
-		slackbot.SendMessage(slackClient, slackChannel, msg)
+		msg := fmt.Sprintf("_Fetching %v _", pr.GetHTMLURL())
+		slackbot.SendMessage(connInfo, msg)
+		// Non-main branch was provided
 	} else if resp.StatusCode == 404 && ref != "main" {
-		msg := fmt.Sprintf("Error: %s", err)
-		slackbot.SendMessage(slackClient, slackChannel, msg)
+		msg := fmt.Sprintf("_Error: %s_", err)
+		slackbot.SendMessage(connInfo, msg)
+		return
+		// Main branch was provided
 	} else {
-		msg := fmt.Sprintf("Fetching %s %s", app, ref)
-		slackbot.SendMessage(slackClient, slackChannel, msg)
+		msg := fmt.Sprintf("_Fetching `%s` for %s app_", ref, app)
+		slackbot.SendMessage(connInfo, msg)
 	}
-
-	return
 
 	tagExists, imgTag, sha := aws.ConfirmImageExists(ctx, githubClient, pr, app)
 	if tagExists != true {
-		msg := fmt.Sprintf("%s does not exist in ECR", imgTag)
-		slackbot.SendMessage(slackClient, slackChannel, msg)
+		msg := fmt.Sprintf("_`%s` does not exist in ECR_", imgTag)
+		slackbot.SendMessage(connInfo, msg)
 		return
 	}
 
 	completed := github.ConfirmChecksCompleted(ctx, githubClient, app, sha, nil)
 	if completed != true {
-		msg := fmt.Sprintf("%s has not been promoted to ECR; Github Actions are still underway", imgTag)
-		slackbot.SendMessage(slackClient, slackChannel, msg)
+		msg := fmt.Sprintf("`_%s` has not been promoted to ECR; Github Actions are still underway_", imgTag)
+		slackbot.SendMessage(connInfo, msg)
 		return
 	}
 
 	rdClser, repoContent, dlMsg, err := github.DownloadValues(ctx, githubClient, app)
 	if err != nil {
-		msg := fmt.Sprintf("Error %s", err.Error())
-		slackbot.SendMessage(slackClient, slackChannel, msg)
+		msg := fmt.Sprintf("_Error %s_", err.Error())
+		slackbot.SendMessage(connInfo, msg)
 		return
 	} else {
-		slackbot.SendMessage(slackClient, slackChannel, dlMsg)
+		slackbot.SendMessage(connInfo, dlMsg)
 	}
 
 	newVFC, _, msg := github.UpdateValues(rdClser, imgTag)
 	if msg != "" {
-		slackbot.SendMessage(slackClient, slackChannel, msg)
+		slackbot.SendMessage(connInfo, msg)
 		return
 	}
 
 	deployMsg, err := github.PushCommit(ctx, githubClient, app, imgTag, newVFC, repoContent)
 	if err != nil {
-		msg := fmt.Sprintf("Error %s", err.Error())
-		slackbot.SendMessage(slackClient, slackChannel, msg)
+		msg := fmt.Sprintf("_Error %s_", err.Error())
+		slackbot.SendMessage(connInfo, msg)
 		return
 	} else {
-		slackbot.SendMessage(slackClient, slackChannel, deployMsg)
+		slackbot.SendMessage(connInfo, deployMsg)
 	}
 	// TODO: The status may return as Synced before the Argo server has received or processed
 	// the webhook, so figure out best way to confirm that webhook has been received and status
 	// is Progressing before breaking out of loop
-	time.Sleep(time.Second * 2) // Argo typically starts processing webhooks in <1s upon receipt
+
+	// Argo typically starts processing webhooks in <1s upon receipt
+	time.Sleep(time.Second * 2)
 
 	for {
 		client := argo.Client()
 		deployStatus := argo.GetArgoDeploymentStatus(client, app)
 		// TODO: Figure out how to format status output "map[time-app:Synced time-sidekiq:Synced] nicely"
 		//slackbot.SendMessage(slackClient, slackChannel, deployStatus)
-		slackClient.PostMessage(event.Channel, slack.MsgOptionText(fmt.Sprintf("%s", deployStatus), false))
+		connInfo.Client.PostMessage(event.Channel, slack.MsgOptionText(fmt.Sprintf("%s", deployStatus), false))
+		//slackbot.SendMessage(connInfo, deployMsg)
 		dSynced := 0
 		for _, status := range deployStatus {
 			if status == "Synced" {
@@ -136,8 +139,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error %s", err.Error())
 		}
-		callerSlackbot := util.ConfirmCallerSlackbot(body)
+		//callerSlackbot := util.ConfirmCallerSlackbot(body)
 		//TODO: Have Adam create unique GH user with PAT that can be used to identify as Slackbot user
+		callerSlackbot := true
 		if callerSlackbot == true {
 			client := argo.Client()
 			err := argo.ForwardGitshot(client, payload)

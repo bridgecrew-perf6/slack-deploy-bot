@@ -40,6 +40,7 @@ func ConfirmImageExists(ctx context.Context, ghclient *github.Client, pr *github
 	}
 
 	images, err := getEcrImages(svc, app)
+	// TODO: include list of available images for given app?
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}

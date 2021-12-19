@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	//	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -15,7 +14,7 @@ const (
 )
 
 // Explicitly declare supported apps instead of make additional network call to Github
-func getApps() []string {
+func GetApps() []string {
 	apps := strings.Split(os.Getenv("SUPPORTED_APPS"), ",")
 	return apps
 }
@@ -31,36 +30,48 @@ func GetRepoAndPath(app string) (string, string) {
 	return repo, path
 }
 
-func CheckArgsValid(ctx context.Context, args []string) (bool, string) {
-	// Show usage in the case no input is provided
-	if len(args) == 1 {
-		return false, "Usage: @me <app> <pr_number/main>"
+func checkAppValid(app string) bool {
+	for _, a := range GetApps() {
+		if a == app {
+			return true
+		}
 	}
+	return false
+}
 
+func CheckArgsValid(ctx context.Context, event string) (bool, string, string, string) {
+	args := strings.Split(event, " ")
 	// Check provided number of args are correct
 	if len(args) != 3 {
-		return false, "Wrong number of args provided"
+		fmt.Println(len(args))
+		msg := fmt.Sprintf("_議論が多すぎます, translation: Usage: @%s <app> <pr_number/main>_", os.Getenv("SLACKBOT_NAME"))
+		return false, msg, "", ""
+	}
+
+	// Check provided app is included in supported apps array
+	valid := checkAppValid(args[1])
+	if valid != true {
+		msg := fmt.Sprintf("_私は認識しません, translation: I do not recognize %s app_", args[1]) //
+		return false, msg, "", ""
 	}
 
 	// Check ref arg is either PR num or main branch
 	_, err := strconv.Atoi((args[2]))
 	if err != nil && args[2] != "main" {
-		return false, "You can only deploy a PR or main branch"
+		msg := fmt.Sprintf("_私は認識しません, translation: I do not recognize %s_ ref", args[2])
+		return false, msg, "", ""
 	}
 
-	// Check provided app is included in supported apps array
-	validApp := false
-	for _, app := range getApps() {
-		if app == args[1] {
-			validApp = true
-			break
-		}
-	}
-	if validApp == false {
-		return false, fmt.Sprintf("Supported apps include %s", getApps())
-	}
-	return true, "success"
+	app := args[1]
+	ref := args[2]
+	return true, "", app, ref
 }
+
+//func parseEventString(eventText string) (string, string) {
+//	pattern := regexp.MustCompile(`\s+`)
+//	args := strings.Split((pattern.ReplaceAllString(eventText, " ")), " ")
+//	return args[1], args[2]
+//}
 
 func GetAppFromPayload(body []byte) string {
 	application := make(map[string]interface{})

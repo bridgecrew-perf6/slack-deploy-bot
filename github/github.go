@@ -34,7 +34,7 @@ func DownloadValues(ctx context.Context, githubClient *github.Client, app string
 		log.Fatalf("error: %v", err)
 		return nil, nil, "", err
 	}
-	dlMsg := fmt.Sprintf("Downloading contents of %s", repoContent.GetHTMLURL())
+	dlMsg := fmt.Sprintf("_ Downloading %s _", repoContent.GetHTMLURL())
 	return rdClser, repoContent, dlMsg, err
 }
 
@@ -57,7 +57,7 @@ func UpdateValuesFileContent(content, imgTag string) ([]byte, error, string) {
 	if tag != imgTag {
 		m["image"].(map[interface{}]interface{})["tag"] = imgTag
 	} else {
-		return nil, nil, fmt.Sprintf("The desired image tag is already set to %s", imgTag)
+		return nil, nil, fmt.Sprintf("_The image tag is already set to `%s`_", imgTag)
 	}
 	bytes, err := yaml.Marshal(m)
 	return bytes, err, ""
@@ -81,7 +81,7 @@ func PushCommit(ctx context.Context, githubClient *github.Client, app, imgTag st
 		return "", err
 	}
 	fmt.Println(repoRespContent.GetHTMLURL())
-	deployMsg := fmt.Sprintf("Updating image.tag to %s", imgTag)
+	deployMsg := fmt.Sprintf("_Updating image.tag to `%s`_", imgTag)
 	return deployMsg, err
 }
 
