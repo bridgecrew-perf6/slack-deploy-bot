@@ -95,15 +95,22 @@ func run(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
 
 	for {
 		client := argo.Client()
-		deployStatus := argo.GetArgoDeploymentStatus(client, app)
-		// TODO: Figure out how to format status output "map[time-app:Synced time-sidekiq:Synced] nicely"
-		//slackbot.SendMessage(slackClient, slackChannel, deployStatus)
-		connInfo.Client.PostMessage(event.Channel, slack.MsgOptionText(fmt.Sprintf("%s", deployStatus), false))
-		//slackbot.SendMessage(connInfo, deployMsg)
-		dSynced := 0
-		for _, status := range deployStatus {
-			if status == "Synced" {
-				dSynced += 1
+		deployStatus, msg := argo.GetArgoDeploymentStatus(client, app)
+		if msg != "" {
+			slackbot.SendMessage(connInfo, msg)
+			return
+		}
+		deploySynced := 0
+
+		//for d, s := range deployStatus {
+		//	msg := fmt.Sprintf("_Status: %s:%s_", d, s)
+		//	slackbot.SendMessage(connInfo, msg)
+		//}
+		for d, s := range deployStatus {
+			msg := fmt.Sprintf("_Status: %s:`%s`_", d, s)
+			slackbot.SendMessage(connInfo, msg)
+			if s == "Synced" {
+				deploySynced += 1
 				continue
 			} else {
 				break
@@ -111,7 +118,7 @@ func run(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
 		}
 		time.Sleep(time.Second * 4)
 		// The app and sidekiq deployments have Synced, which are good proxies for complete application Sync
-		if dSynced == 2 {
+		if deploySynced == 2 {
 			break
 		}
 	}
@@ -204,6 +211,7 @@ func main() {
 					Timestamp: e.TimeStamp,
 				}
 
+				// If the channel is deployments-production
 				if e.Channel == os.Getenv("PROTECTED_CHANNEL") {
 					authorized := util.AuthorizeUser(e.User)
 
@@ -220,5 +228,13 @@ func main() {
 	})
 
 	fmt.Println("[INFO] Server listening ...")
-	http.ListenAndServe(fmt.Sprintf(":%s", os.Getenv("PORT")), nil)
+	//http.ListenAndServe(fmt.Sprintf(":%s", os.Getenv("PORT")), nil)
+	s := &http.Server{
+		Addr:         fmt.Sprintf(":%s", os.Getenv("PORT")),
+		Handler:      nil,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		//MaxHeaderBytes: 1 << 20,
+	}
+	s.ListenAndServe()
 }

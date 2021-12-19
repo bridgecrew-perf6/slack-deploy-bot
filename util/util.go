@@ -60,7 +60,7 @@ func CheckArgsValid(ctx context.Context, event string) (bool, string, string, st
 	// Check provided app is included in supported apps array
 	valid := checkAppValid(args[1])
 	if valid != true {
-		msg := fmt.Sprintf("_私は認識しません, translation: I do not recognize %s app_", args[1]) //
+		msg := fmt.Sprintf("_私は認識しません, translation: I do not recognize %s app_", args[1])
 		return false, msg, "", ""
 	}
 

@@ -57,15 +57,21 @@ func SyncApplication(client *http.Client, app string) error {
 	return nil
 }
 
-func GetArgoDeploymentStatus(client *http.Client, app string) map[string]string {
+func GetArgoDeploymentStatus(client *http.Client, app string) (map[string]string, string) {
 	path := fmt.Sprintf("api/v1/applications/%s", app)
 	req := buildRequest(path, "GET", nil)
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatalf("Error %s", err.Error())
+	resp, _ := client.Do(req)
+	if resp.StatusCode == 404 {
+		msg := fmt.Sprintf("_Error: `%s` %s_", app, resp.Status)
+		log.Printf(msg)
+		return nil, msg
 	}
 
 	body, _ := io.ReadAll(resp.Body)
+	//if err != nil {
+	//	log.Fatalf("Error %s", err.Error())
+	//	return nil
+	//}
 	// TODO: Figure out most idiomatic way to parse this json
 	application := make(map[string]interface{})
 	json.Unmarshal(body, &application)
@@ -79,5 +85,6 @@ func GetArgoDeploymentStatus(client *http.Client, app string) map[string]string 
 			deploymentStatus[name] = status
 		}
 	}
-	return deploymentStatus
+
+	return deploymentStatus, ""
 }
