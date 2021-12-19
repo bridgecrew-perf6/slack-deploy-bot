@@ -13,6 +13,16 @@ const (
 	Owner = "capco-ea"
 )
 
+func AuthorizeUser(user string) bool {
+	users := strings.Split(os.Getenv("AUTHORIZED_USERS"), ",")
+	for _, u := range users {
+		if u == user {
+			return true
+		}
+	}
+	return false
+}
+
 // Explicitly declare supported apps instead of make additional network call to Github
 func GetApps() []string {
 	apps := strings.Split(os.Getenv("SUPPORTED_APPS"), ",")
@@ -61,7 +71,6 @@ func CheckArgsValid(ctx context.Context, event string) (bool, string, string, st
 		msg := fmt.Sprintf("_私は認識しません, translation: I do not recognize %s_ ref", args[2])
 		return false, msg, "", ""
 	}
-
 	app := args[1]
 	ref := args[2]
 	return true, "", app, ref

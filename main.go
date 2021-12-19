@@ -21,13 +21,8 @@ import (
 	"github.com/slack-go/slack/slackevents"
 )
 
-func run(event *slackevents.AppMentionEvent) {
+func run(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
 	log.Printf("Arguments received %s", event.Text)
-	connInfo := slackbot.ConnInfo{
-		Client:    slackbot.Client(),
-		Channel:   event.Channel,
-		Timestamp: event.TimeStamp,
-	}
 	// TODO: Implement additional contexts for subsequent requests
 	ctx, githubClient := github.Client()
 	valid, msg, app, ref := util.CheckArgsValid(ctx, event.Text)
@@ -204,7 +199,18 @@ func main() {
 
 			switch e := innerEvent.Data.(type) {
 			case *slackevents.AppMentionEvent:
-				go run(e)
+				connInfo := slackbot.ConnInfo{
+					Client:    slackbot.Client(),
+					Channel:   e.Channel,
+					Timestamp: e.TimeStamp,
+				}
+				authorized := util.AuthorizeUser(e.User)
+				if authorized != true {
+					msg := fmt.Sprintf("_あなたはふさわしくない")
+					slackbot.SendMessage(connInfo, msg)
+					return
+				}
+				go run(e, connInfo)
 				return
 			}
 		}
