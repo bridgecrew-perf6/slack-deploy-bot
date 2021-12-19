@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 
-	//	"deploy-bot/slack"
 	"deploy-bot/util"
 	"github.com/google/go-github/v40/github"
 	"github.com/joho/godotenv"
@@ -71,7 +70,8 @@ func PushCommit(ctx context.Context, githubClient *github.Client, app, imgTag st
 		Message: &commitMsg,
 		Branch:  &branch,
 		Content: valuesFile,
-		SHA:     repoContent.SHA}
+		SHA:     repoContent.SHA,
+	}
 
 	// This triggers Github webhook with request inbound for /githook
 	repoRespContent, _, err := githubClient.Repositories.UpdateFile(ctx, util.Owner, repo, path, &repoCFO)

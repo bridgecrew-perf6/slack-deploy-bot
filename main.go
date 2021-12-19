@@ -22,7 +22,7 @@ import (
 )
 
 func run(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
-	log.Printf("Arguments received %s", event.Text)
+	log.Printf("Event received: %s", event.Text)
 	// TODO: Implement additional contexts for subsequent requests
 	ctx, githubClient := github.Client()
 	valid, msg, app, ref := util.CheckArgsValid(ctx, event.Text)
@@ -31,7 +31,6 @@ func run(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
 		log.Printf("%s", msg)
 		return
 	}
-	//app, ref := util.ParseEventString(event.Text)
 	prNum, _ := strconv.Atoi(ref)
 	pr, resp, err := github.GetPullRequest(ctx, githubClient, app, prNum)
 
@@ -204,11 +203,15 @@ func main() {
 					Channel:   e.Channel,
 					Timestamp: e.TimeStamp,
 				}
-				authorized := util.AuthorizeUser(e.User)
-				if authorized != true {
-					msg := fmt.Sprintf("_あなたはふさわしくない")
-					slackbot.SendMessage(connInfo, msg)
-					return
+
+				if e.Channel == os.Getenv("PROTECTED_CHANNEL") {
+					authorized := util.AuthorizeUser(e.User)
+
+					if authorized != true {
+						msg := fmt.Sprintf("_あなたはふさわしくない_")
+						slackbot.SendMessage(connInfo, msg)
+						return
+					}
 				}
 				go run(e, connInfo)
 				return

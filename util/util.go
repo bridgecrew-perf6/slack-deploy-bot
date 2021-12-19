@@ -53,7 +53,6 @@ func CheckArgsValid(ctx context.Context, event string) (bool, string, string, st
 	args := strings.Split(event, " ")
 	// Check provided number of args are correct
 	if len(args) != 3 {
-		fmt.Println(len(args))
 		msg := fmt.Sprintf("_議論が多すぎます, translation: Usage: @%s <app> <pr_number/main>_", os.Getenv("SLACKBOT_NAME"))
 		return false, msg, "", ""
 	}
