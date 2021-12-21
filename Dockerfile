@@ -1,19 +1,30 @@
-FROM golang:1.17.3 as base
-RUN adduser --disabled-password deploy-bot
-USER deploy-bot
-ADD main.go src/
-ADD util/ src/util/
-ADD go.* src/
-#RUN set -x && \
-#    cd src && go mod init && go get && go env -w GO111MODULE=off && \
-#    CGO_ENABLED=0 go build -o /go/bin/deploy-bot
-RUN set -x && \
-    cd src && go get && \
-    CGO_ENABLED=0 go build -o /go/bin/deploy-bot
+FROM golang:alpine as base
 
-# final stage
+RUN apk update && apk add --no-cache git ca-certificates && update-ca-certificates
+ENV USER=capco
+ENV UID=1001 
+RUN adduser \    
+    --disabled-password \    
+    --gecos "" \    
+    --shell /sbin/nologin \    
+    --no-create-home \    
+    --uid $UID \    
+    $USER
+
+ADD main.go src/
+ADD go.* src/
+ADD argo/ src/argo/
+ADD aws/ src/aws/
+ADD github/ src/github/
+ADD slack/ src/slack/
+ADD util/ src/util/
+RUN cd src && go mod tidy && go mod verify && CGO_ENABLED=0 go build -o /go/bin/deploy-bot
+
 FROM scratch
-#WORKDIR /app
+COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=base /etc/passwd /etc/passwd
+COPY --from=base /etc/group /etc/group
 COPY --from=base /go/bin/deploy-bot /go/bin/deploy-bot
 EXPOSE 4040
-ENTRYPOINT ["/go/bin/deploy-bot"]
+USER capco:capco
+CMD ["/go/bin/deploy-bot"]
