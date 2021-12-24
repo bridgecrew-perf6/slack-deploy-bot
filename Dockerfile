@@ -5,7 +5,6 @@ ENV USER=capco
 ENV UID=1001 
 RUN adduser \    
     --disabled-password \    
-    --gecos "" \    
     --shell /sbin/nologin \    
     --no-create-home \    
     --uid $UID \    

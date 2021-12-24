@@ -25,7 +25,7 @@ func run(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
 	log.Printf("Event received: %s", event.Text)
 	// TODO: Implement additional contexts for subsequent requests
 	ctx, githubClient := github.Client()
-	valid, msg, app, ref := util.CheckArgsValid(ctx, event.Text)
+	valid, msg, app, ref := util.CheckArgsValid(event.Text)
 	if valid != true {
 		slackbot.SendMessage(connInfo, msg)
 		log.Printf("%s", msg)
@@ -117,15 +117,11 @@ func run(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
 			}
 		}
 		time.Sleep(time.Second * 4)
-		// The app and sidekiq deployments have Synced, which are good proxies for complete application Sync
+		// The app and sidekiq deployments have Synced, representing a good proxy for complete application Sync
 		if deploySynced == 2 {
 			break
 		}
 	}
-	//The typical flow of a multithreaded program in Go involves setting up communication channels,
-	// and then passing these channels to all goroutines which need to communicate.
-	// Worker goroutines send processed data to the channel, and goroutines which need
-	// to wait on work done by others will do so by receiving from this channel.
 	return
 }
 
@@ -228,13 +224,11 @@ func main() {
 	})
 
 	fmt.Println("[INFO] Server listening ...")
-	//http.ListenAndServe(fmt.Sprintf(":%s", os.Getenv("PORT")), nil)
 	s := &http.Server{
 		Addr:         fmt.Sprintf(":%s", os.Getenv("PORT")),
 		Handler:      nil,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
-		//MaxHeaderBytes: 1 << 20,
 	}
 	s.ListenAndServe()
 }

@@ -28,7 +28,7 @@ func SendMessage(conn ConnInfo, msg string) {
 
 func buildSlackAttachment(msg string) slack.Attachment {
 	attachment := slack.Attachment{
-		//		Pretext: "some pretext",
+		// Pretext: "some pretext",
 		Text: msg,
 		Fields: []slack.AttachmentField{
 			slack.AttachmentField{

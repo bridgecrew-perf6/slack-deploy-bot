@@ -1,7 +1,6 @@
 package util
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -24,7 +23,7 @@ func AuthorizeUser(user string) bool {
 }
 
 // Explicitly declare supported apps instead of make additional network call to Github
-func GetApps() []string {
+func getApps() []string {
 	apps := strings.Split(os.Getenv("SUPPORTED_APPS"), ",")
 	return apps
 }
@@ -40,8 +39,8 @@ func GetRepoAndPath(app string) (string, string) {
 	return repo, path
 }
 
-func checkAppValid(app string) bool {
-	for _, a := range GetApps() {
+func CheckAppValid(app string) bool {
+	for _, a := range getApps() {
 		if a == app {
 			return true
 		}
@@ -49,7 +48,7 @@ func checkAppValid(app string) bool {
 	return false
 }
 
-func CheckArgsValid(ctx context.Context, event string) (bool, string, string, string) {
+func CheckArgsValid(event string) (bool, string, string, string) {
 	args := strings.Split(event, " ")
 	// Check provided number of args are correct
 	if len(args) != 3 {
@@ -58,28 +57,26 @@ func CheckArgsValid(ctx context.Context, event string) (bool, string, string, st
 	}
 
 	// Check provided app is included in supported apps array
-	valid := checkAppValid(args[1])
+	valid := CheckAppValid(args[1])
 	if valid != true {
 		msg := fmt.Sprintf("_私は認識しません, translation: I do not recognize %s app_", args[1])
 		return false, msg, "", ""
 	}
 
 	// Check ref arg is either PR num or main branch
-	_, err := strconv.Atoi((args[2]))
-	if err != nil && args[2] != "main" {
+	num, _ := strconv.Atoi((args[2])) // Atoi will return 0 for any string
+	if num < 0 {
+		msg := fmt.Sprintf("_それは一体何だ?, translation: You do not want to know_")
+		return false, msg, "", ""
+	} else if num == 0 && args[2] != "main" {
 		msg := fmt.Sprintf("_私は認識しません, translation: I do not recognize %s_ ref", args[2])
 		return false, msg, "", ""
 	}
 	app := args[1]
 	ref := args[2]
+
 	return true, "", app, ref
 }
-
-//func parseEventString(eventText string) (string, string) {
-//	pattern := regexp.MustCompile(`\s+`)
-//	args := strings.Split((pattern.ReplaceAllString(eventText, " ")), " ")
-//	return args[1], args[2]
-//}
 
 func GetAppFromPayload(body []byte) string {
 	application := make(map[string]interface{})
