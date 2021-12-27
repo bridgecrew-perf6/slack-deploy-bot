@@ -1,0 +1,106 @@
+name: Test / Build / Push / Promote
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  ECR_REPOSITORY: slack-deploy-bot
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.17
+    
+    - name: Test
+      run: go test -v ./...
+
+  build_and_push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: satackey/action-docker-layer-caching@v0.0.11
+        continue-on-error: true
+        with:
+          key: docker-cache-${{ secrets.DOCKER_CACHE_KEY }}-{hash}
+          restore-keys: |
+            docker-cache-${{ secrets.DOCKER_CACHE_KEY }}-
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Extract branch name
+        shell: bash
+        run: echo "##[set-output name=branch;]$(NAME=${GITHUB_HEAD_REF#refs/heads/}; NAME=${NAME:-main}; echo $NAME)"
+        id: extract_branch
+
+      - name: Extract short SHA for this branch (ignoring merge commit)
+        run: echo "##[set-output name=short_sha;]$(SHORT_SHA=$(git rev-parse --short ${{ github.event.pull_request.head.sha }}); SHORT_SHA=${SHORT_SHA:-$(git rev-parse --short $(git rev-list --no-merges -n 1 HEAD))}; echo $SHORT_SHA)"
+        id: extract_sha
+
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.extract_branch.outputs.branch }}
+          SHORT_SHA: ${{ steps.extract_sha.outputs.short_sha }}
+        run: |
+          IMAGE_TAG=$(echo $IMAGE_TAG | tr './' '-')-$SHORT_SHA
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG-inflight --build-arg SHORT_SHA .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG-inflight
+
+  promote_image:
+    runs-on: ubuntu-latest
+    needs: [test, build_and_push]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Extract branch name
+        shell: bash
+        # The following is a conditional set to latest if a branch name wasn't parsed (e.g. for `main`)
+        run: echo "##[set-output name=branch;]$(NAME=${GITHUB_HEAD_REF#refs/heads/}; NAME=${NAME:-main}; echo $NAME)"
+        id: extract_branch
+
+      - name: Extract short SHA for this branch (ignoring merge commit)
+        run: echo "##[set-output name=short_sha;]$(SHORT_SHA=$(git rev-parse --short ${{ github.event.pull_request.head.sha }}); SHORT_SHA=${SHORT_SHA:-$(git rev-parse --short $(git rev-list --no-merges -n 1 HEAD))}; echo $SHORT_SHA)"
+        id: extract_sha
+
+      - name: Pull manifest and push to final tag
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.extract_branch.outputs.branch }}
+        run: |
+          IMAGE_TAG=$(echo $IMAGE_TAG | tr './' '-')-${{ steps.extract_sha.outputs.short_sha }}
+          ECR_PASSWORD=$(aws ecr get-login-password) &&
+          FINAL_URL="https://${ECR_REGISTRY}/v2/${ECR_REPOSITORY}/manifests/${IMAGE_TAG}" &&
+          INFLIGHT_URL="${FINAL_URL}-inflight" &&
+          MANIFEST=$(curl -u AWS:$ECR_PASSWORD $INFLIGHT_URL) &&
+          curl -XPUT -u AWS:$ECR_PASSWORD $FINAL_URL -d "${MANIFEST}" -H "Content-Type: application/vnd.docker.distribution.manifest.v2+json"
