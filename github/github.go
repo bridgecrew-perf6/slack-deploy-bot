@@ -24,33 +24,33 @@ func Client() (context.Context, *github.Client) {
 	return ctx, client
 }
 
-func DownloadValues(ctx context.Context, githubClient *github.Client, app string) (io.ReadCloser, *github.RepositoryContent, string, error) {
+func DownloadValues(ctx context.Context, client *github.Client, app string) (io.ReadCloser, *github.RepositoryContent, string, error) {
 	repo, path := util.GetRepoAndPath(app)
-	repoOpts := github.RepositoryContentGetOptions{Ref: "main"}
+	opts := github.RepositoryContentGetOptions{Ref: "main"}
 	// TODO: Setup retry in case github download fails?
-	rc, content, _, err := githubClient.Repositories.DownloadContentsWithMeta(ctx, util.Owner, repo, path, &repoOpts)
+
+	rc, content, _, err := client.Repositories.DownloadContentsWithMeta(ctx, util.Owner, repo, path, &opts)
 	if err != nil {
-		log.Fatalf("error: %v", err)
+		log.Fatalf("Error: %v", err)
 		return nil, nil, "", err
 	}
 	dlMsg := fmt.Sprintf("_ Downloading %s _", content.GetHTMLURL())
 	return rc, content, dlMsg, err
 }
 
-func UpdateValues(rdClser io.Reader, imgTag string) ([]byte, error, string) {
-	bytes, _ := io.ReadAll(rdClser)
-	valuesFileContent := string(bytes)
-	newVFC, err, msg := UpdateValuesFileContent(valuesFileContent, imgTag)
+func UpdateValues(rc io.Reader, imgTag string) ([]byte, error, string) {
+	bytes, _ := io.ReadAll(rc)
+	oldVFC := string(bytes)
+	newVFC, err, msg := updateValuesFileContent(oldVFC, imgTag)
 	return newVFC, err, msg
 }
 
-func UpdateValuesFileContent(content, imgTag string) ([]byte, error, string) {
+func updateValuesFileContent(content, imgTag string) ([]byte, error, string) {
 	m := make(map[interface{}]interface{})
 	err := yaml.Unmarshal([]byte(content), &m)
 	if err != nil {
 		log.Fatalf("error: %v", err)
 	}
-
 	// TODO: FIX THIS
 	tag := m["image"].(map[interface{}]interface{})["tag"]
 	if tag != imgTag {
@@ -62,39 +62,37 @@ func UpdateValuesFileContent(content, imgTag string) ([]byte, error, string) {
 	return bytes, err, ""
 }
 
-func PushCommit(ctx context.Context, client *github.Client, app, imgTag string, valuesFile []byte, content *github.RepositoryContent) (string, error) {
+func PushCommit(ctx context.Context, client *github.Client, app, imgTag string, values []byte, content *github.RepositoryContent) (string, error) {
 	repo, path := util.GetRepoAndPath(app)
 	branch := "main"
 	commitMsg := fmt.Sprintf("Deploy %s:%s", app, imgTag)
 	repoCFO := github.RepositoryContentFileOptions{
 		Message: &commitMsg,
 		Branch:  &branch,
-		Content: valuesFile,
+		Content: values,
 		SHA:     content.SHA,
 	}
 
 	// This triggers Github webhook with request inbound for /githook
-	repoRespContent, _, err := client.Repositories.UpdateFile(ctx, util.Owner, repo, path, &repoCFO)
-	// TODO: Return newly created commit URL in slack message
+	repoResp, _, err := client.Repositories.UpdateFile(ctx, util.Owner, repo, path, &repoCFO)
 	if err != nil {
 		log.Fatalf("Error %s", err.Error())
 		return "", err
 	}
-	fmt.Println(repoRespContent.GetHTMLURL())
-	//fmt.Println(repoRespContent.Commit)
-	deployMsg := fmt.Sprintf("_Updating image.tag to `%s`_", imgTag)
+	commitURL := repoResp.Commit.URL // TODO: Return newly created commit URL in slack message
+	deployMsg := fmt.Sprintf("_Updating image.tag to `%s`:%s_", imgTag, *commitURL)
 	return deployMsg, err
 }
 
 // Check that all checks have passed on latest commit for specified PR
 func ConfirmChecksCompleted(ctx context.Context, client *github.Client, app, sha string, opts *github.ListCheckRunsOptions) bool {
-	checkRunResults, _, err := client.Checks.ListCheckRunsForRef(ctx, util.Owner, app, sha, nil)
+	crr, _, err := client.Checks.ListCheckRunsForRef(ctx, util.Owner, app, sha, nil)
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}
 
-	for _, crr := range checkRunResults.CheckRuns {
-		if (crr.GetName() == "promote_image") && (crr.GetStatus() == "completed") {
+	for _, cr := range crr.CheckRuns {
+		if cr.GetName() == "promote_image" && cr.GetStatus() == "completed" {
 			return true
 		}
 	}

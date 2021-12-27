@@ -21,7 +21,7 @@ func getEcrImages(svc *ecr.ECR, app string) (*ecr.ListImagesOutput, error) {
 }
 
 // Checks to ensure the image exists in ECR
-func ConfirmImageExists(ctx context.Context, ghclient *github.Client, pr *github.PullRequest, app string) (bool, string, string) {
+func ConfirmImageExists(ctx context.Context, client *github.Client, pr *github.PullRequest, app string) (bool, string, string) {
 	svc := ecrSession()
 	var imgTag *string
 	var sha string
@@ -30,7 +30,7 @@ func ConfirmImageExists(ctx context.Context, ghclient *github.Client, pr *github
 	// so then we get the HEAD commit on main
 	if pr == nil {
 		opts := &github.CommitsListOptions{SHA: "main"}
-		repoCommits, _, _ := ghclient.Repositories.ListCommits(ctx, util.Owner, app, opts)
+		repoCommits, _, _ := client.Repositories.ListCommits(ctx, util.Owner, app, opts)
 		imgTag = util.BuildDockerImageString("main", *repoCommits[0].SHA)
 		sha = *repoCommits[0].SHA
 	} else {

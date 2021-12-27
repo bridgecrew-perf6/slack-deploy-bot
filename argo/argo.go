@@ -73,6 +73,9 @@ func GetArgoDeploymentStatus(client *http.Client, app string) (map[string]string
 	//	return nil
 	//}
 	// TODO: Figure out most idiomatic way to parse this json
+	//By defining suitable Go dat a
+	//st ruc tures in this way, we can selec t which par ts of the JSON inp ut to decode and which to discard . Wh en Unmarshal returns, it has filled in the slice wit h the Title infor mat ion; other
+	//names in the JSON are ignored.
 	application := make(map[string]interface{})
 	json.Unmarshal(body, &application)
 	status := application["status"]
