@@ -17,7 +17,7 @@ func TestAuthorizeUser(t *testing.T) {
 		{"Authorized user", "U022HC654DP", true},
 		{"Another authorized user", "UJ6APF5MF", true},
 		{"Unauthorized user", "U8675309", false},
-		{"No user provided", "", false},
+		{"No user provided", "", true},
 	}
 
 	for i, u := range tt {
