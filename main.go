@@ -166,17 +166,17 @@ func gitHook(w http.ResponseWriter, r *http.Request) {
 			log.Printf("\n\nError parsing app from git webhook payload: %s", err.Error())
 			return
 		}
-		ctx, argoc := argo.Client()
-		if err := argo.HardRefresh(ctx, argoc); err != nil {
+		argoc := argo.Client()
+		if err := argo.HardRefresh(argoc); err != nil {
 			log.Printf("\n\nError refreshing Argo application: %s", err.Error())
 		}
 
 		payload := bytes.NewReader(body)
-		if err := argo.ForwardGitshot(ctx, argoc, payload); err != nil {
+		if err := argo.ForwardGitshot(argoc, payload); err != nil {
 			log.Printf("\n\nError forwarding gitshot to argocd: %s", err.Error())
 			return
 		}
-		argo.SyncApplication(ctx, argoc, app)
+		argo.SyncApplication(argoc, app)
 
 	//for {
 	//	status, msg, _ := argo.GetArgoDeploymentStatus(argoc, app)

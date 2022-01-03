@@ -1,11 +1,9 @@
 package argo
 
 import (
-	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/oauth2"
 	"io"
 	"log"
 	"net/http"
@@ -13,36 +11,36 @@ import (
 	//"time"
 )
 
-func Client() (context.Context, *http.Client) {
-	token := os.Getenv("ARGOCD_JWT")
-	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-	cl := oauth2.NewClient(ctx, ts)
-	trnsPrt := &http.Transport{
-		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},
-		DisableKeepAlives: true,
-		//MaxIdleConns:      0,
-		//MaxConnsPerHost:   0,
-	}
-	cl.Transport = trnsPrt
-	//Transport: trnsPrt,
-	return ctx, cl
-}
-
-//func Client() *http.Client {
-//	// TODO: Figure out why argo server returns x509: certificate signed by unknown authority error
+//func Client() (context.Context, *http.Client) {
+//	token := os.Getenv("ARGOCD_JWT")
+//	ctx := context.Background()
+//	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+//	cl := oauth2.NewClient(ctx, ts)
 //	trnsPrt := &http.Transport{
 //		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},
 //		DisableKeepAlives: true,
 //		//MaxIdleConns:      0,
 //		//MaxConnsPerHost:   0,
 //	}
-//	client := &http.Client{
-//		Transport: trnsPrt,
-//		//Timeout:   time.Second * 15, // this should be replaced with request scoped ctx timeouts
-//	}
-//	return client
+//	cl.Transport = trnsPrt
+//	//Transport: trnsPrt,
+//	return ctx, cl
 //}
+
+func Client() *http.Client {
+	// TODO: Figure out why argo server returns x509: certificate signed by unknown authority error
+	trnsPrt := &http.Transport{
+		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},
+		DisableKeepAlives: true,
+		//MaxIdleConns:      0,
+		//MaxConnsPerHost:   0,
+	}
+	client := &http.Client{
+		Transport: trnsPrt,
+		//Timeout:   time.Second * 15, // this should be replaced with request scoped ctx timeouts
+	}
+	return client
+}
 
 func buildRequest(path, method string, payload io.Reader) *http.Request {
 	url := fmt.Sprintf("%s/%s", os.Getenv("ARGOCD_SERVER"), path)
@@ -55,7 +53,7 @@ func buildRequest(path, method string, payload io.Reader) *http.Request {
 	return req
 }
 
-func HardRefresh(ctx context.Context, client *http.Client) error {
+func HardRefresh(client *http.Client) error {
 	path := fmt.Sprintf("api/v1/applications/performance?refresh=hard")
 	refReq := buildRequest(path, "GET", nil)
 	if res, err := client.Do(refReq); err != nil {
@@ -67,7 +65,7 @@ func HardRefresh(ctx context.Context, client *http.Client) error {
 	return nil
 }
 
-func ForwardGitshot(ctx context.Context, client *http.Client, payload io.Reader) error {
+func ForwardGitshot(client *http.Client, payload io.Reader) error {
 	// TODO: A more sophisticated way to do this is to forward the request
 	// with headers intact instead of reconstructing as a new request
 	path := "api/webhook"
@@ -88,7 +86,7 @@ func ForwardGitshot(ctx context.Context, client *http.Client, payload io.Reader)
 	return nil
 }
 
-func SyncApplication(ctx context.Context, client *http.Client, app string) error {
+func SyncApplication(client *http.Client, app string) error {
 	path := fmt.Sprintf("api/v1/applications/%s/sync", app)
 	req := buildRequest(path, "POST", nil)
 	res, err := client.Do(req)
@@ -101,7 +99,7 @@ func SyncApplication(ctx context.Context, client *http.Client, app string) error
 	return nil
 }
 
-func GetArgoDeploymentStatus(ctx context.Context, client *http.Client, app string) (map[string]string, string, error) {
+func GetArgoDeploymentStatus(client *http.Client, app string) (map[string]string, string, error) {
 	path := fmt.Sprintf("api/v1/applications/%s", app)
 	req := buildRequest(path, "GET", nil)
 	resp, err := client.Do(req)
