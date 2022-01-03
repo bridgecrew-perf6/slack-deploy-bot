@@ -80,14 +80,18 @@ func CheckArgsValid(event string) (bool, string, string, string) {
 	return true, "", app, ref
 }
 
-func GetAppFromPayload(body []byte) string {
+func GetAppFromPayload(body []byte) (string, error) {
 	application := make(map[string]interface{})
-	json.Unmarshal(body, &application)
+	err := json.Unmarshal(body, &application)
 	commit := application["head_commit"]
 	modified := commit.(map[string]interface{})["modified"]
 	str := modified.([]interface{})[0].(string)
 	app := strings.TrimSuffix(str, "/values.yaml")
-	return app
+	if app == "" {
+		return "", err
+	} else {
+		return app, nil
+	}
 }
 
 // The Github hook should only be forwarded to Argo if initiated by the slackbot
