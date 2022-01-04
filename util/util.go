@@ -80,14 +80,18 @@ func CheckArgsValid(event string) (bool, string, string, string) {
 	return true, "", app, ref
 }
 
-func GetAppFromPayload(body []byte) string {
+func GetAppFromPayload(body []byte) (string, error) {
 	application := make(map[string]interface{})
-	json.Unmarshal(body, &application)
+	err := json.Unmarshal(body, &application)
 	commit := application["head_commit"]
 	modified := commit.(map[string]interface{})["modified"]
 	str := modified.([]interface{})[0].(string)
 	app := strings.TrimSuffix(str, "/values.yaml")
-	return app
+	if app == "" {
+		return "", err
+	} else {
+		return app, nil
+	}
 }
 
 // The Github hook should only be forwarded to Argo if initiated by the slackbot
@@ -102,18 +106,3 @@ func ConfirmCallerSlackbot(body []byte) bool {
 		return false
 	}
 }
-
-//func WaitForServer(url string) error {
-//	util.WaitForResponse(client.Repositories.DownloadContentsWithMeta(ctx, util.Owner, repo, path, &repoOpts))
-//	const timeout = 5 * time.Second
-//	deadline := time.Now().Add(timeout)
-//	for tries := 0; time.Now().Before(deadline); tries++ {
-//		_, err := http.Head(url)
-//		if err == nil {
-//			return nil // success
-//		}
-//		log.Printf("server not responding (%s); retrying...", err)
-//		time.Sleep(time.Second << uint(tries)) // exponential back-off
-//	}
-//	return fmt.Errorf("server %s failed to respond after %s", url, timeout)
-//}
