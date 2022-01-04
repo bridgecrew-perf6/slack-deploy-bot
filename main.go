@@ -21,9 +21,8 @@ import (
 	"github.com/slack-go/slack/slackevents"
 )
 
-func run(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
-	log.Printf("Event received: %s", event.Text)
-	//return
+func doEvent(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
+	log.Printf("Event received, returning...: %s", event.Text)
 	// TODO: Implement additional contexts for subsequent requests
 	ctx, ghc := github.Client()
 	valid, msg, app, ref := util.CheckArgsValid(event.Text)
@@ -83,6 +82,7 @@ func run(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
 		deployMsg := fmt.Sprintf("_Updating image.tag to `%s`_", imgTag)
 		slackbot.SendMessage(connInfo, deployMsg)
 	}
+
 	// TODO: The status may return as Synced before the Argo server has received or processed
 	// the webhook, so figure out best way to confirm that webhook has been received and status
 	// is Progressing before breaking out of loop
@@ -121,96 +121,59 @@ func run(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
 	//}
 }
 
+func doHook(w http.ResponseWriter, body []byte) {
+	//TODO: Have Adam create unique GH user with PAT that can be used to identify as Slackbot user
+	app, err := util.GetAppFromPayload(body)
+	if err != nil {
+		log.Printf("\n\nError parsing app from git webhook payload: %s", err.Error())
+		return
+	}
+	argoc := argo.Client()
+	if err := argo.HardRefresh(argoc); err != nil {
+		log.Printf("\n\nError refreshing Argo application: %s", err.Error())
+	}
+
+	payload := bytes.NewReader(body)
+	if err := argo.ForwardGitshot(argoc, payload); err != nil {
+		log.Printf("\n\nError forwarding gitshot to argocd: %s", err.Error())
+		return
+	}
+	argo.SyncApplication(argoc, app)
+}
+
 func main() {
 	// TODO: Remove this when all testing is complete
 	godotenv.Load(".env")
-
 	http.HandleFunc("/githook", gitHook)
-	http.HandleFunc("/events", slackEvent)
+	http.HandleFunc("/slackevent", slackEvent)
 	s := &http.Server{
 		Addr:    fmt.Sprintf(":%s", os.Getenv("PORT")),
 		Handler: nil,
-		//ReadTimeout:  0,
-		//WriteTimeout: 0,
+		//ReadTimeout:  30,
+		//WriteTimeout: 30,
 	}
-	log.Println("[INFO] Server listening ...")
+	log.Printf("[INFO] Server listening on port %s ...", os.Getenv("PORT"))
 	s.ListenAndServe()
 }
 
 func gitHook(w http.ResponseWriter, r *http.Request) {
-	// TODO: Do something with w
-	//w.WriteHeader(http.StatusBadRequest)
-	//_, err := fmt.Printf("Githook received: \n requestHeaders...%v\n",
-	//	r.Header,
-	//)
-
-	//if err != nil {
-	//	w.WriteHeader(http.StatusBadRequest)
-	//	return
-	//}
-
+	log.Printf("Githook received, returning: %v", r.Header)
 	body, _ := io.ReadAll(r.Body)
 	if len(body) == 0 {
 		log.Printf("Could not read gitHook request body, body length: %d", len(body))
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	} else {
 		w.WriteHeader(http.StatusAccepted)
-	}
-	defer r.Body.Close()
+		defer r.Body.Close()
 
-	//TODO: Have Adam create unique GH user with PAT that can be used to identify as Slackbot user
-	switch util.ConfirmCallerSlackbot(body) {
-	case true:
-		app, err := util.GetAppFromPayload(body)
-		if err != nil {
-			log.Printf("\n\nError parsing app from git webhook payload: %s", err.Error())
+		switch util.ConfirmCallerSlackbot(body) {
+		case true:
+			go doHook(w, body)
+		default:
+			log.Printf("Caller not Slackbot, returning...")
 			return
 		}
-		argoc := argo.Client()
-		if err := argo.HardRefresh(argoc); err != nil {
-			log.Printf("\n\nError refreshing Argo application: %s", err.Error())
-		}
-
-		payload := bytes.NewReader(body)
-		if err := argo.ForwardGitshot(argoc, payload); err != nil {
-			log.Printf("\n\nError forwarding gitshot to argocd: %s", err.Error())
-			return
-		}
-		argo.SyncApplication(argoc, app)
-
-	//for {
-	//	status, msg, _ := argo.GetArgoDeploymentStatus(argoc, app)
-	//	if msg != "" {
-	//		slackbot.SendMessage(connInfo, msg)
-	//		return
-	//	}
-	//	synced := 0
-
-	//	//for d, s := range deployStatus {
-	//	//	msg := fmt.Sprintf("_Status: %s:%s_", d, s)
-	//	//	slackbot.SendMessage(connInfo, msg)
-	//	//}
-	//	for d, s := range status {
-	//		msg := fmt.Sprintf("_Status: %s:`%s`_", d, s)
-	//		slackbot.SendMessage(connInfo, msg)
-	//		if s == "Synced" {
-	//			synced++
-	//			continue
-	//		} else {
-	//			break
-	//		}
-	//	}
-	//	time.Sleep(time.Second * 4)
-	//	// The app and sidekiq deployments have Synced, representing a good proxy for complete application Sync
-	//	if synced == 2 {
-	//		break
-	//	}
-	//}
-	//return
-	default:
-		log.Printf("Caller not Slackbot, returning...")
-		return
-
 	}
 }
 
@@ -277,8 +240,7 @@ func slackEvent(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			go run(e, connInfo)
-			return
+			go doEvent(e, connInfo)
 
 		default:
 			return
