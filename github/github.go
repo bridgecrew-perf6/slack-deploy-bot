@@ -73,7 +73,6 @@ func PushCommit(ctx context.Context, client *github.Client, app, imgTag string, 
 		SHA:     content.SHA,
 	}
 
-	// This triggers Github webhook with request inbound for /githook
 	_, _, err := client.Repositories.UpdateFile(ctx, util.Owner, repo, path, &opts)
 	if err != nil {
 		log.Printf("Error updating file: %s", err.Error())

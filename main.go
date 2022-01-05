@@ -21,8 +21,12 @@ import (
 	"github.com/slack-go/slack/slackevents"
 )
 
+// Bad global var that can be read between handlers to enable threaded Slack responses
+var slackEventTimestamp = "thisIsAHugeAntiPattern"
+var slackEventChannel = "C02MYKCQG9W"
+
 func doEvent(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
-	log.Printf("Event received, returning...: %s", event.Text)
+	log.Printf("Event received: %s", event.Text)
 	// TODO: Implement additional contexts for subsequent requests
 	ctx, ghc := github.Client()
 	valid, msg, app, ref := util.CheckArgsValid(event.Text)
@@ -41,7 +45,7 @@ func doEvent(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
 		slackbot.SendMessage(connInfo, msg)
 		return
 	} else { // Main branch was provided
-		msg := fmt.Sprintf("_Fetching `%s` for %s app_", ref, app)
+		msg := fmt.Sprintf("_Fetching `%s` for %s _", ref, app)
 		slackbot.SendMessage(connInfo, msg)
 	}
 
@@ -74,6 +78,7 @@ func doEvent(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
 		return
 	}
 
+	// This triggers Github webhook with request inbound for /githook
 	if github.PushCommit(ctx, ghc, app, imgTag, values, repoContent); err != nil {
 		msg := fmt.Sprintf("_Error %s_", err.Error())
 		slackbot.SendMessage(connInfo, msg)
@@ -82,63 +87,38 @@ func doEvent(event *slackevents.AppMentionEvent, connInfo slackbot.ConnInfo) {
 		deployMsg := fmt.Sprintf("_Updating image.tag to `%s`_", imgTag)
 		slackbot.SendMessage(connInfo, deployMsg)
 	}
-
-	// TODO: The status may return as Synced before the Argo server has received or processed
-	// the webhook, so figure out best way to confirm that webhook has been received and status
-	// is Progressing before breaking out of loop
-
-	//time.Sleep(time.Second * 4) // Argo typically starts processing webhooks in <1s upon receipt
-	//argoc := argo.Client()
-	//fmt.Printf("argo client: %T", argoc)
-	//for {
-
-	//	fmt.Println("inside deploy status for loop now")
-	//	status, msg, _ := argo.GetArgoDeploymentStatus(argoc, app)
-	//	if msg != "" {
-	//		slackbot.SendMessage(connInfo, msg)
-	//		return
-	//	}
-	//	synced := 0
-
-	//	//for d, s := range deployStatus {
-	//	//	msg := fmt.Sprintf("_Status: %s:%s_", d, s)
-	//	//	slackbot.SendMessage(connInfo, msg)
-	//	//}
-	//	for d, s := range status {
-	//		msg := fmt.Sprintf("_Status: %s:`%s`_", d, s)
-	//		slackbot.SendMessage(connInfo, msg)
-	//		if s == "Synced" {
-	//			synced++
-	//			continue
-	//		} else {
-	//			break
-	//		}
-	//	}
-	//	time.Sleep(time.Second * 4)
-	//	if synced == 2 { // The app and sidekiq deployments have Synced, representing a good proxy for complete application Sync
-	//		break
-	//	}
-	//}
 }
 
-func doHook(w http.ResponseWriter, body []byte) {
+func doHook(body []byte, connInfo slackbot.ConnInfo) {
 	//TODO: Have Adam create unique GH user with PAT that can be used to identify as Slackbot user
 	app, err := util.GetAppFromPayload(body)
 	if err != nil {
-		log.Printf("\n\nError parsing app from git webhook payload: %s", err.Error())
+		log.Printf("Error parsing app from git webhook payload: %s", err.Error())
+		msg := fmt.Sprintf("_Error parsing app from git webhook payload: %s_", err.Error())
+		slackbot.SendMessage(connInfo, msg)
 		return
 	}
 	argoc := argo.Client()
-	if err := argo.HardRefresh(argoc); err != nil {
-		log.Printf("\n\nError refreshing Argo application: %s", err.Error())
+	//if err := argo.HardRefresh(argoc); err != nil {
+	//	//log.Printf("Error refreshing Argo application: %s", err.Error())
+	//}
+	payload := bytes.NewReader(body)
+	if msg, err := argo.ForwardGitshot(argoc, payload); err != nil {
+		log.Printf("Error forwarding gitshot to Argocd: %s", err.Error())
+		slackbot.SendMessage(connInfo, msg)
+		return
+	} else {
+		//slackbot.SendMessage(connInfo, msg) //comment if desired "Argocd received gitshot"
 	}
 
-	payload := bytes.NewReader(body)
-	if err := argo.ForwardGitshot(argoc, payload); err != nil {
-		log.Printf("\n\nError forwarding gitshot to argocd: %s", err.Error())
+	if msg, err := argo.SyncApplication(argoc, app); err != nil {
+		log.Printf("Error syncing application in Argocd: %s", err.Error())
+		slackbot.SendMessage(connInfo, msg)
 		return
+	} else {
+		go argo.DoStatusLoop(argoc, app, connInfo)
+		slackbot.SendMessage(connInfo, msg) //comment if desired "Argocd application Sync underway"
 	}
-	argo.SyncApplication(argoc, app)
 }
 
 func main() {
@@ -149,16 +129,21 @@ func main() {
 	s := &http.Server{
 		Addr:    fmt.Sprintf(":%s", os.Getenv("PORT")),
 		Handler: nil,
-		//ReadTimeout:  30,
-		//WriteTimeout: 30,
 	}
-	log.Printf("[INFO] Server listening on port %s ...", os.Getenv("PORT"))
+	log.Printf("[INFO] Server listening on localhost:%s", os.Getenv("PORT"))
 	s.ListenAndServe()
 }
 
 func gitHook(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Githook received, returning: %v", r.Header)
+	log.Printf("Githook received: %v", r)
 	body, _ := io.ReadAll(r.Body)
+
+	connInfo := slackbot.ConnInfo{
+		Client:    slackbot.Client(),
+		Channel:   slackEventChannel,
+		Timestamp: slackEventTimestamp,
+	}
+
 	if len(body) == 0 {
 		log.Printf("Could not read gitHook request body, body length: %d", len(body))
 		w.WriteHeader(http.StatusBadRequest)
@@ -169,7 +154,7 @@ func gitHook(w http.ResponseWriter, r *http.Request) {
 
 		switch util.ConfirmCallerSlackbot(body) {
 		case true:
-			go doHook(w, body)
+			go doHook(body, connInfo)
 		default:
 			log.Printf("Caller not Slackbot, returning...")
 			return
@@ -231,7 +216,11 @@ func slackEvent(w http.ResponseWriter, r *http.Request) {
 				Channel:   e.Channel,
 				Timestamp: e.TimeStamp, // Required for threaded responses
 			}
-
+			// Undoubtedly modifying a global variable like this huge-anti pattern,
+			// but it's the only solution I have for now that solves the problem
+			// of passing the original slackEvent timestamp to the the githook handler
+			slackEventTimestamp = e.TimeStamp
+			slackEventChannel = e.Channel
 			if e.Channel == os.Getenv("PROTECTED_CHANNEL") { // If the channel is deployments-production
 				authorized := util.AuthorizeUser(e.User)
 				if authorized != true {
