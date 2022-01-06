@@ -107,8 +107,6 @@ func doHook(body []byte, connInfo slackbot.ConnInfo) {
 		log.Printf("Error forwarding gitshot to Argocd: %s", err.Error())
 		slackbot.SendMessage(connInfo, msg)
 		return
-	} else {
-		//slackbot.SendMessage(connInfo, msg) //comment if desired "Argocd received gitshot"
 	}
 
 	if msg, err := argo.SyncApplication(argoc, app); err != nil {
@@ -127,8 +125,7 @@ func main() {
 	http.HandleFunc("/githook", gitHook)
 	http.HandleFunc("/slackevent", slackEvent)
 	s := &http.Server{
-		Addr:    fmt.Sprintf(":%s", os.Getenv("PORT")),
-		Handler: nil,
+		Addr: fmt.Sprintf(":%s", os.Getenv("PORT")),
 	}
 	log.Printf("[INFO] Server listening on localhost:%s", os.Getenv("PORT"))
 	s.ListenAndServe()
@@ -137,7 +134,6 @@ func main() {
 func gitHook(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Githook received: %v", r)
 	body, _ := io.ReadAll(r.Body)
-
 	connInfo := slackbot.ConnInfo{
 		Client:    slackbot.Client(),
 		Channel:   slackEventChannel,
@@ -216,7 +212,7 @@ func slackEvent(w http.ResponseWriter, r *http.Request) {
 				Channel:   e.Channel,
 				Timestamp: e.TimeStamp, // Required for threaded responses
 			}
-			// Undoubtedly modifying a global variable like this huge-anti pattern,
+			// Modifying a global variable like this huge-anti pattern,
 			// but it's the only solution I have for now that solves the problem
 			// of passing the original slackEvent timestamp to the the githook handler
 			slackEventTimestamp = e.TimeStamp
